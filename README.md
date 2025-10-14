@@ -28,8 +28,11 @@ Out[6]: 904061
 words_rdd.distinct().count()
 67779                                                                   
 
-### Show the top 5 most frequent words
+## 4 & 5. Count Word Occurrence and Show Top 5
 
 key_value_rdd = words_rdd.map(lambda word: (word, 1))
-key_value_rdd.take(5)
-[('The', 1), ('Project', 1), ('Gutenberg', 1), ('EBook', 1), ('of', 1)]# spark_workshop
+word_counts_rdd = key_value_rdd.reduceByKey(lambda x, y: x + y)
+flipped_rdd = word_counts_rdd.map(lambda item: (item[1], item[0]))
+results_rdd = flipped_rdd.sortByKey(False)
+results_rdd.take(5)
+[(23407, 'the'), (19540, 'I'), (18358, 'and'), (15682, 'to'), (15649, 'of')]
