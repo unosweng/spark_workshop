@@ -36,3 +36,32 @@ flipped_rdd = word_counts_rdd.map(lambda item: (item[1], item[0]))
 results_rdd = flipped_rdd.sortByKey(False)
 results_rdd.take(5)
 [(23407, 'the'), (19540, 'I'), (18358, 'and'), (15682, 'to'), (15649, 'of')]
+
+--
+rdd1 = sc.textFile("5000_points.txt")
+
+>>> rdd1.count()
+5000
+
+>>> rdd1.take(4)
+[' 664159 550946', ' 665845 557965', ' 597173 575538', ' 618600 551446']
+
+>>> rdd2 = rdd1.map(lambda x:x.split())
+
+>>> rdd2.take(4)[['664159', '550946'], ['665845', '557965'], ['597173', '575538'], ['618600', '551446']]>>> rdd3 = rdd2.map(lambda x: [int(x[0]),int(x[1])])
+
+>>> rdd3.take(4)[[664159, 550946], [665845, 557965], [597173, 575538], [618600, 551446]]
+
+>>>
+
+rdd1 = sc.textFile("5000_points.txt")
+
+rdd2 = rdd1.map(lambda x:x.split())
+
+rdd3 = rdd2.map(lambda x: [int(x[0]),int(x[1])])
+
+from pyspark.mllib.clustering import KMeans
+
+for clusters in range(1,30):
+    model = KMeans.train(rdd3, clusters)
+    print (clusters, model.computeCost(rdd3))
