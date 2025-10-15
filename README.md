@@ -65,3 +65,6 @@ from pyspark.mllib.clustering import KMeans
 for clusters in range(1,30):
     model = KMeans.train(rdd3, clusters)
     print (clusters, model.computeCost(rdd3))
+
+for clusters in range(1,30):
+    print (clusters)
