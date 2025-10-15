@@ -104,89 +104,52 @@ for k in trial_ranks:
 
 print('The best rank is size', best_k)
 
-# Redo the last phase with the best rank size and using test dataset this time
-model = ALS.train(training_RDD, best_k, seed=seed, iterations=iterations, lambda_=regularization)
-predictions_RDD = model.predictAll(predict_test_RDD).map(lambda r: ((r[0], r[1]), r[2]))
-ratings_and_preds_RDD = test_RDD.map(lambda r: ((r[0], r[1]), r[2])).join(predictions_RDD)
-error = math.sqrt(ratings_and_preds_RDD.map(lambda r: (r[1][0] - r[1][1])**2).mean())
-print ('For testing data the RMSE is %s' % (error))
+import matplotlib.pyplot as plt
+from pyspark.mllib.recommendation import ALS
+import math
 
-# Add a new user. Assuming ID 0 is unused, but can check with "ratings_RDD.filter(lambda x: x[0]=='0').count()"
-new_user_ID = 0
-new_user = [
-     (0,100,4), # City Hall (1996)
-     (0,237,1), # Forget Paris (1995)
-     (0,44,4), # Mortal Kombat (1995)
-     (0,25,5), # etc....
-     (0,456,3),
-     (0,849,3),
-     (0,778,2),
-     (0,909,3),
-     (0,478,5),
-     (0,248,4)
-    ]
-new_user_RDD = sc.parallelize(new_user)
-updated_ratings_RDD = ratings_RDD.union(new_user_RDD)
+# Assumes training_RDD, validation_RDD, predict_validation_RDD, and best_k are pre-loaded
+# best_k was determined to be 8 in the previous step.
 
-#Update model. This takes time.
-updated_model = ALS.train(updated_ratings_RDD, best_k, seed=seed, iterations=iterations, lambda_=regularization)
+iterations_range = range(1, 15)
+error_values = []
+best_k = 8
+seed = 5
+regularization = 0.1
 
-#Use large or small datasets
-movies_raw_RDD = sc.textFile('movies.csv')
-# movies_raw_RDD = sc.textFile('movies-large.csv')
+print("Analyzing model convergence...")
 
-#Parse lines
-movies_RDD = movies_raw_RDD.map(lambda line: line.split(",")).map(lambda tokens: (int(tokens[0]),tokens[1]))
+# Loop through different numbers of iterations
+for i in iterations_range:
+    # Train the model with i iterations
+    model = ALS.train(training_RDD, best_k, seed=seed, iterations=i, lambda_=regularization)
+    
+    # Make predictions on the validation data
+    predictions_RDD = model.predictAll(predict_validation_RDD).map(lambda r: ((r[0], r[1]), r[2]))
+    ratings_and_preds_RDD = validation_RDD.map(lambda r: ((r[0], r[1]), r[2])).join(predictions_RDD)
+    
+    # Calculate the RMSE
+    rmse = math.sqrt(ratings_and_preds_RDD.map(lambda r: (r[1][0] - r[1][1])**2).mean())
+    error_values.append(rmse)
+    print(f'For {i} iterations, RMSE = {rmse}')
 
-#Create prediction type RDD of all movies not yet rated by new user
-new_user_rated_movie_ids = map(lambda x: x[1], new_user)
-new_user_unrated_movies_RDD = movies_RDD.filter(lambda x: x[0] not in new_user_rated_movie_ids).map(lambda x: (new_user_ID, x[0]))
+print("Analysis complete.")
 
-#Get recomendations
-new_user_recommendations_RDD = updated_model.predictAll(new_user_unrated_movies_RDD)
+# --- Plotting the results ---
+plt.figure(figsize=(10, 6))
+plt.plot(iterations_range, error_values, marker='o', linestyle='--')
+plt.title('ALS Model Convergence: RMSE vs. Iterations')
+plt.xlabel('Number of Iterations')
+plt.ylabel('Root Mean Square Error (RMSE)')
+plt.grid(True)
+plt.xticks(iterations_range)
+plt.tight_layout()
 
-# Transform into (Movie ID, Predicted Rating)
-#First turn from spark model struct to (produce,rating)
-# product_rating_RDD = new_user_recommendations_RDD.map(lambda x: (x.product, x.rating))
-# updated oct 15.
-# Transform into (Movie ID, Predicted Rating) and clip the output
-product_rating_RDD = new_user_recommendations_RDD.map(
-    lambda x: (x.product, max(1.0, min(5.0, x.rating)))
-)
+# Save the plot to a file to view it
+plt.savefig('convergence_plot.png')
 
-#Now join with Movies to get real title
-new_user_recommendations_titled_RDD = product_rating_RDD.join(movies_RDD)
-#In final format (movie,rating)
-new_user_recommendations_formatted_RDD = new_user_recommendations_titled_RDD.map(lambda x: (x[1][1],x[1][0]))
+print("Convergence plot saved as convergence_plot.png")
 
-#Top recommedations
-top_recomends = new_user_recommendations_formatted_RDD.takeOrdered(10, key=lambda x: -x[1])
-for line in top_recomends:
-    print (line)
-
-one_movie_RDD = sc.parallelize([(0, 800)]) # Lone Star (1996)
-rating_RDD = updated_model.predictAll(one_movie_RDD)
-rating_RDD.take(1)
-
-# ---
-# In [1]: exec(open("recommender.py").read())
-# 25/10/15 11:13:50 WARN InstanceBuilder: Failed to load implementation from:dev.ludovic.netlib.blas.JNIBLAS
-# 25/10/15 11:13:50 WARN InstanceBuilder: Failed to load implementation from:dev.ludovic.netlib.lapack.JNILAPACK
-# For k= 4 the RMSE is 0.9413424733373922                                         
-# For k= 8 the RMSE is 0.9411785685075075                                         
-# For k= 12 the RMSE is 0.9493750827785539                                        
-# The best rank is size 8
-# For testing data the RMSE is 0.953225094121041
-# ('Beauty and the Beast (La belle et la bête) (1946)', 5.225436974785245)        
-# ('Benji (1974)', 5.138126970228097)
-# ('"Fast', 5.120911299906917)
-# ('American Pop (1981)', 5.0909322122849066)
-# ('"Goat', 4.97763856817046)
-# ('Land of Silence and Darkness (Land des Schweigens und der Dunkelheit) (1971)', 4.97763856817046)
-# ('"Play House', 4.97763856817046)
-# ('Cops (1922)', 4.97763856817046)
-# ("Cookie's Fortune (1999)", 4.950198187424187)
-# ('Withnail & I (1987)', 4.944551954233145)
 
 # ---
  
